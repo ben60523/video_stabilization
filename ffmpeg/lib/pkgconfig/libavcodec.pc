@@ -1,0 +1,14 @@
+prefix=/c/dev/vcpkg/packages/ffmpeg_x64-windows-static-mt-v142/debug
+exec_prefix=${prefix}
+libdir=/c/dev/vcpkg/packages/ffmpeg_x64-windows-static-mt-v142/debug/lib
+includedir=/c/dev/vcpkg/packages/ffmpeg_x64-windows-static-mt-v142/debug/include
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 58.68.100
+Requires: libswresample >= 3.6.100, libavutil >= 56.39.100
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavcodec libx264.lib ole32.lib user32.lib
+Libs.private: 
+Cflags: -I${includedir}

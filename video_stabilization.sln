@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30011.22
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "optical_flow", "optical_flow\optical_flow.vcxproj", "{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "video_stabilization", "video_stabilization\video_stabilization.vcxproj", "{4E7766B2-64AC-4925-B189-5748A26104EB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Debug|x64.ActiveCfg = Debug|x64
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Debug|x64.Build.0 = Debug|x64
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Debug|x86.ActiveCfg = Debug|Win32
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Debug|x86.Build.0 = Debug|Win32
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Release|x64.ActiveCfg = Release|x64
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Release|x64.Build.0 = Release|x64
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Release|x86.ActiveCfg = Release|Win32
+		{126BDD6A-75DA-437A-B7AF-DAC8DB65B91F}.Release|x86.Build.0 = Release|Win32
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Debug|x64.ActiveCfg = Debug|x64
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Debug|x64.Build.0 = Debug|x64
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Debug|x86.ActiveCfg = Debug|Win32
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Debug|x86.Build.0 = Debug|Win32
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Release|x64.ActiveCfg = Release|x64
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Release|x64.Build.0 = Release|x64
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Release|x86.ActiveCfg = Release|Win32
+		{4E7766B2-64AC-4925-B189-5748A26104EB}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D39B5DBF-04B4-4F29-8B72-E9A64D60B799}
+	EndGlobalSection
+EndGlobal

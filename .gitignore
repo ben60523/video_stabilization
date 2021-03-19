@@ -1,0 +1,12 @@
+*/Debug/
+*.vcxproj.user
+*/x64/
+*.xml
+*.sdf
+Debug/
+.vs/
+x64
+*.aps
+*.mp4
+*.MP4
+*.pdb
