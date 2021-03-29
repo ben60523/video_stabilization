@@ -63,9 +63,14 @@ int main(int argc, char** argv)
         // calculate optical flow
         vector<uchar> status;
         vector<float> err;
-        TermCriteria criteria = TermCriteria((TermCriteria::COUNT) + (TermCriteria::EPS), 10, 0.03);
-        calcOpticalFlowPyrLK(old_gray, frame_gray, p0, p1, status, err, Size(15, 15), 2, criteria);
         vector<Point2f> good_new;
+        TermCriteria criteria = TermCriteria((TermCriteria::COUNT) + (TermCriteria::EPS), 10, 0.03);
+        if (p0.size() == 0) {
+            old_gray = frame_gray.clone();
+            p0 = good_new;
+            continue;
+        }
+        calcOpticalFlowPyrLK(old_gray, frame_gray, p0, p1, status, err, Size(15, 15), 2, criteria);
         for (uint i = 0; i < p0.size(); i++)
         {
             // Select good points

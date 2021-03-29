@@ -15,6 +15,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 
 */
+#define PREVIEW 1
+
 
 #include "stdafx.h"
 #include "ffmpeg_cv_utils.hpp"
@@ -22,193 +24,34 @@ Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 using namespace std;
 using namespace cv;
 
-const int SMOOTHING_RADIUS = 25; // In frames. The larger the more stable the video, but less reactive to sudden panning
-
-struct TransformParam
-{
-	TransformParam() {}
-	TransformParam(double _dx, double _dy, double _da)
-	{
-		dx = _dx;
-		dy = _dy;
-		da = _da;
-	}
-
-	double dx;
-	double dy;
-	double da; // angle
-
-	void getTransform(Mat& T)
-	{
-		// Reconstruct transformation matrix accordingly to new values
-		T.at<double>(0, 0) = cos(da);
-		T.at<double>(0, 1) = -sin(da);
-		T.at<double>(1, 0) = sin(da);
-		T.at<double>(1, 1) = cos(da);
-
-		T.at<double>(0, 2) = dx;
-		T.at<double>(1, 2) = dy;
-	}
-};
-
-
-struct Trajectory
-{
-	Trajectory() {}
-	Trajectory(double _x, double _y, double _a) {
-		x = _x;
-		y = _y;
-		a = _a;
-	}
-
-	double x;
-	double y;
-	double a; // angle
-};
-
-
-vector<Trajectory> cumsum(vector<TransformParam>& transforms)
-{
-	vector <Trajectory> trajectory; // trajectory at all frames
-	// Accumulated frame to frame transform
-	double a = 0;
-	double x = 0;
-	double y = 0;
-
-	for (size_t i = 0; i < transforms.size(); i++)
-	{
-		x += transforms[i].dx;
-		y += transforms[i].dy;
-		a += transforms[i].da;
-
-		trajectory.push_back(Trajectory(x, y, a));
-
-	}
-
-	return trajectory;
-}
-
-vector <Trajectory> smooth(vector <Trajectory>& trajectory, int radius)
-{
-	vector <Trajectory> smoothed_trajectory;
-	for (size_t i = 0; i < trajectory.size(); i++) {
-		double sum_x = 0;
-		double sum_y = 0;
-		double sum_a = 0;
-		int count = 0;
-
-		for (int j = -radius; j <= radius; j++) {
-			if (i + j >= 0 && i + j < trajectory.size()) {
-				sum_x += trajectory[i + j].x;
-				sum_y += trajectory[i + j].y;
-				sum_a += trajectory[i + j].a;
-
-				count++;
-			}
-		}
-
-		double avg_a = sum_a / count;
-		double avg_x = sum_x / count;
-		double avg_y = sum_y / count;
-
-		smoothed_trajectory.push_back(Trajectory(avg_x, avg_y, avg_a));
-	}
-
-	return smoothed_trajectory;
-}
+const int SMOOTHING_RADIUS = 40; // In frames. The larger the more stable the video, but less reactive to sudden panning
+const char* FILENAME = "video_4.mp4";
 
 void fixBorder(Mat& frame_stabilized)
 {
-	Mat T = getRotationMatrix2D(Point2f(frame_stabilized.cols, frame_stabilized.rows), 0, 1.1);
+	Mat T = getRotationMatrix2D(Point2f(frame_stabilized.cols / 2, frame_stabilized.rows / 2), 0, 1.1);
 	warpAffine(frame_stabilized, frame_stabilized, T, frame_stabilized.size());
 }
 
 int main(int argc, char** argv)
 {
 	// Read input video
-	VideoCapture cap("video.mp4");
+	VideoCapture cap(FILENAME);
 	// Get frame count
-	int n_frames = int(cap.get(CAP_PROP_FRAME_COUNT));
 	// Get frames per second (fps)
 	double fps = cap.get(cv::CAP_PROP_FPS);
 	// Get width and height of video stream
 	int w = int(cap.get(CAP_PROP_FRAME_WIDTH));
+	w = w * 2; // concat image 
 	int h = int(cap.get(CAP_PROP_FRAME_HEIGHT));
-	Mat curr, curr_gray;
-	Mat prev, prev_gray;
 	int nb_v_frame = 0, nb_a_frame = 0;
-	cap >> prev;
 	int ret = 0;
 	InputVideoState* ivs = (InputVideoState*)malloc(sizeof(InputVideoState));
 	AVFrame* input_frame = av_frame_alloc();
-	openVideo(ivs, "video.mp4");
-	// Convert frame to grayscale
-	cvtColor(prev, prev_gray, COLOR_BGR2GRAY);
-	vector <TransformParam> transforms;
+	openVideo(ivs, FILENAME);
 
-	Mat last_T;
-	for (int i = 0; i <= n_frames; i++)
-	{
-		// Vector from previous and current feature points
-		vector <Point2f> prev_pts, curr_pts;
-		goodFeaturesToTrack(prev_gray, prev_pts, 100, 0.01, 30);
-		bool success = cap.read(curr);
-		if (!success) break;
-		cvtColor(curr, curr_gray, COLOR_BGR2GRAY);
-		// Calculate optical flow (i.e. track feature points)
-		vector <uchar> status;
-		vector <float> err;
-		calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, curr_pts, status, err);
+	vector <TransformParam> transforms_smooth = video_stabilization_with_average(cap, SMOOTHING_RADIUS);
 
-		// Filter only valid points
-		auto prev_it = prev_pts.begin();
-		auto curr_it = curr_pts.begin();
-		for (size_t k = 0; k < status.size(); k++)
-		{
-			if (status[k])
-			{
-				prev_it++;
-				curr_it++;
-			}
-			else
-			{
-				prev_it = prev_pts.erase(prev_it);
-				curr_it = curr_pts.erase(curr_it);
-			}
-		}
-
-		// Find transformation matrix
-		Mat T = estimateAffinePartial2D(prev_pts, curr_pts);
-		// In rare cases no transform is found. 
-		// We'll just use the last known good transform.
-		if (T.data == NULL) last_T.copyTo(T);
-		T.copyTo(last_T);
-		// Extract traslation and rotation angle
-		double dx = T.at<double>(0, 2);
-		double dy = T.at<double>(1, 2);
-		double da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
-		transforms.push_back(TransformParam(dx, dy, da));
-		curr_gray.copyTo(prev_gray);
-		std::cout << "Frame: " << i << "/" << n_frames << " -  Tracked points : " << prev_pts.size() << '\r' << flush;
-	}
-	cout << endl;
-	// Compute trajectory using cumulative sum of transformations
-	vector <Trajectory> trajectory = cumsum(transforms);
-	vector <Trajectory> smoothed_trajectory = smooth(trajectory, SMOOTHING_RADIUS);
-	vector <TransformParam> transforms_smooth;
-	for (size_t i = 0; i < transforms.size(); i++)
-	{
-		// Calculate difference in smoothed_trajectory and trajectory
-		double diff_x = smoothed_trajectory[i].x - trajectory[i].x;
-		double diff_y = smoothed_trajectory[i].y - trajectory[i].y;
-		double diff_a = smoothed_trajectory[i].a - trajectory[i].a;
-		// Calculate newer transformation array
-		double dx = transforms[i].dx + diff_x;
-		double dy = transforms[i].dy + diff_y;
-		double da = transforms[i].da + diff_a;
-
-		transforms_smooth.push_back(TransformParam(dx, dy, da));
-	}
 	cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 	Mat T(2, 3, CV_64F);
 	Mat frame_mat, frame_stabilized, frame_out;
@@ -231,7 +74,7 @@ int main(int argc, char** argv)
 	}
 	// ======================== Allocate codec context ========================== //
 	AVCodecContext* v_codec_ctx = avcodec_alloc_context3(vcodec);
-	v_codec_ctx->width = ivs->v_stream->codecpar->width;
+	v_codec_ctx->width = ivs->v_stream->codecpar->width * 2;
 	v_codec_ctx->height = ivs->v_stream->codecpar->height;
 	v_codec_ctx->pix_fmt = *vcodec->pix_fmts;
 	v_codec_ctx->time_base = av_inv_q(dst_fps);
@@ -308,29 +151,58 @@ int main(int argc, char** argv)
 				frame_mat = avframeToCvmat(input_frame);
 				// Extract transform from translation and rotation angle. 
 				transforms_smooth[nb_v_frame].getTransform(T);
-				// Apply affine wrapping to the given frame
-				warpAffine(frame_mat, frame_stabilized, T, frame_mat.size());
-				// Scale image to remove black border artifact
+				// if concat, w / 200
+				// or w /100
+				if (abs(T.at<double>(1, 0)) <= 0.18f && abs(T.at<double>(0, 2)) <= w / 200 && abs(T.at<double>(1, 2)) <= h / 100) {
+					cout <<
+						"cos = " << setprecision(3) << T.at<double>(0, 0) <<
+						", -sin = " << setprecision(3) << T.at<double>(0, 1) <<
+						", sin = " << setprecision(3) << T.at<double>(1, 0) <<
+						", cos = " << setprecision(3) << T.at<double>(1, 1) <<
+						", dx = " << setprecision(3) << T.at<double>(0, 2) <<
+						", dy = " << setprecision(3) << T.at<double>(1, 2) << endl;
+					// Apply affine wrapping to the given frame
+					warpAffine(frame_mat, frame_stabilized, T, frame_mat.size());
+					// Scale image to remove black border artifact
+
+				}
+				else {
+					//frame_stabilized.copyTo(frame_mat);
+					frame_stabilized = frame_mat.clone();
+				}
 				fixBorder(frame_stabilized);
+				hconcat(frame_mat, frame_stabilized, frame_out); // concat image
 				// Now draw the original and stablised side by side for coolness
 				// If the image is too big, resize it.
+#if PREVIEW
 				if (frame_out.cols > 1920)
 				{
-					resize(frame_out, frame_out, Size(frame_out.cols / 2, frame_out.rows / 2));
+					resize(frame_out, frame_out, Size(frame_out.cols / 4, frame_out.rows / 4));
 				}
-				encodeCVMatByFFmpeg(frame_stabilized, swsctx, v_codec_ctx, outctx, vframe, vstr);
+				moveWindow("preview", 0, 0);
+				imshow("preview", frame_out);
+
+				int keyboard = waitKey(10);
+				if (keyboard == 'q' || keyboard == 27)
+					break;
+#else				
+				encodeCVMatByFFmpeg(frame_out, swsctx, v_codec_ctx, outctx, vframe, vstr);
+#endif
 				nb_v_frame++;
+
 			}
+#if !PREVIEW
 			else if (ret == 3) {
 				encodeAudio(input_frame, swr_ctx, a_codec_ctx, outctx, aframe, astr);
 				nb_a_frame++;
 			}
+#endif // !PERVIEW
+
 		}
 		cout << "video: " << nb_v_frame << " frames encoded, " << "audio: " << nb_a_frame << " frame encoded" << '\r' << flush;
 	}
 
 	// =================== Release video and Free memory ======================= //
-end:
 	cap.release();
 	av_write_trailer(outctx);
 	cout << endl;
@@ -347,5 +219,8 @@ end:
 	avcodec_close(ivs->v_codec_ctx);
 	avformat_free_context(ivs->in_ctx);
 	free(ivs);
+#ifdef PREVIEW
+	destroyWindow("preview");
+#endif // PREVIEW
 	return 0;
 }

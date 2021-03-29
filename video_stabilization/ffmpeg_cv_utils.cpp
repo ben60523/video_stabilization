@@ -1,13 +1,8 @@
 #include "stdafx.h"
 #include "ffmpeg_cv_utils.hpp"
 
-
 using namespace std;
 using namespace cv;
-
-
-
-
 
 static int open_codec_context(InputVideoState* ivs, enum AVMediaType type)
 {
@@ -103,7 +98,7 @@ int decodeFrame(InputVideoState* ivs, AVFrame* frame) {
 		ret = avcodec_receive_frame(ivs->v_codec_ctx, frame);
 		if (ret < 0) {
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-				return ret;
+				return 0;
 			}
 			char a[60];
 			cerr << "[Video] fail to avcodec_receive_frame: ret=" << av_make_error_string(a, 64, ret) << "\n";
@@ -122,7 +117,7 @@ int decodeFrame(InputVideoState* ivs, AVFrame* frame) {
 		ret = avcodec_receive_frame(ivs->a_codec_ctx, frame);
 		if (ret < 0) {
 			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-				return ret;
+				return 0;
 			}
 			char a[60];
 			cerr << "[Audio] fail to avcodec_receive_frame: ret=" << av_make_error_string(a, 64, ret) << "\n";
@@ -252,4 +247,148 @@ AVFrame* cvmatToAvframe(Mat* image, AVFrame* frame) {
 	sws_scale(conversion, &image->data, cvLinesizes, 0, height, frame->data, frame->linesize);
 	sws_freeContext(conversion);
 	return  frame;
+}
+
+
+vector<Trajectory> cumsum(vector<TransformParam>& transforms)
+{
+	vector <Trajectory> trajectory; // trajectory at all frames
+	// Accumulated frame to frame transform
+	double a = 0;
+	double x = 0;
+	double y = 0;
+
+	for (size_t i = 0; i < transforms.size(); i++)
+	{
+		x += transforms[i].dx;
+		y += transforms[i].dy;
+		a += transforms[i].da;
+
+		trajectory.push_back(Trajectory(x, y, a));
+
+	}
+
+	return trajectory;
+}
+
+vector <Trajectory> smooth(vector <Trajectory>& trajectory, int radius)
+{
+	vector <Trajectory> smoothed_trajectory;
+	for (size_t i = 0; i < trajectory.size(); i++) {
+		double sum_x = 0;
+		double sum_y = 0;
+		double sum_a = 0;
+		int count = 0;
+
+		for (int j = -radius; j <= radius; j++) {
+			if (i + j >= 0 && i + j < trajectory.size()) {
+				sum_x += trajectory[i + j].x;
+				sum_y += trajectory[i + j].y;
+				sum_a += trajectory[i + j].a;
+
+				count++;
+			}
+		}
+
+		double avg_a = sum_a / count;
+		double avg_x = sum_x / count;
+		double avg_y = sum_y / count;
+
+		smoothed_trajectory.push_back(Trajectory(avg_x, avg_y, avg_a));
+	}
+
+	return smoothed_trajectory;
+}
+
+
+vector <TransformParam>video_stabilization_with_average(VideoCapture cap, int SMOOTHING_RADIUS)
+{
+	int n_frames = int(cap.get(CAP_PROP_FRAME_COUNT));
+	Mat curr, curr_gray;
+	Mat prev, prev_gray;
+	cap >> prev;
+	// Convert frame to grayscale
+	cvtColor(prev, prev_gray, COLOR_BGR2GRAY);
+	vector <TransformParam> transforms;
+	Mat last_T;
+
+	for (int i = 0; i <= n_frames; i++)
+	{
+		// Vector from previous and current feature points
+		vector <Point2f> prev_pts, curr_pts;
+		bool success = cap.read(curr);
+		if (!success) break;
+		cvtColor(curr, curr_gray, COLOR_BGR2GRAY);
+		goodFeaturesToTrack(prev_gray, prev_pts, 100, 0.3, 7, Mat(), 7, false, 0.04);
+		if (prev_pts.size() == 0) {
+			transforms.push_back(TransformParam(0, 0, 0));
+			curr_gray.copyTo(prev_gray);
+			continue;
+		}
+		TermCriteria criteria = TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.03);
+		cornerSubPix(prev_gray, prev_pts, Size(5, 5), Size(-1, -1), criteria);
+
+		// Calculate optical flow (i.e. track feature points)
+		vector <uchar> status;
+		vector <float> err;
+		// TODO: prev_pts null
+		calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, curr_pts, status, err, Size(15, 15), 2, criteria);
+
+		// Filter only valid points
+		auto prev_it = prev_pts.begin();
+		auto curr_it = curr_pts.begin();
+		for (size_t k = 0; k < status.size(); k++)
+		{
+			if (status[k])
+			{
+				prev_it++;
+				curr_it++;
+			}
+			else
+			{
+				prev_it = prev_pts.erase(prev_it);
+				curr_it = curr_pts.erase(curr_it);
+			}
+		}
+
+		// Find transformation matrix
+		if (prev_pts.size() == 0 || curr_pts.size() == 0) {
+			transforms.push_back(TransformParam(0, 0, 0));
+			curr_gray.copyTo(prev_gray);
+			//waitKey(30);
+			continue;
+		}
+		Mat T = estimateAffinePartial2D(prev_pts, curr_pts);
+		// In rare cases no transform is found. 
+		// We'll just use the last known good transform.
+		if (T.data == NULL) last_T.copyTo(T);
+		T.copyTo(last_T);
+		// Extract traslation and rotation angle
+		double dx = T.at<double>(0, 2);
+		double dy = T.at<double>(1, 2);
+		double da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
+		transforms.push_back(TransformParam(dx, dy, da));
+		curr_gray.copyTo(prev_gray);
+		std::cout << "Frame: " << i << "/" << n_frames << '\r' << flush;
+	}
+	cout << endl;
+	// Compute trajectory using cumulative sum of transformations
+	vector <Trajectory> trajectory = cumsum(transforms);
+	vector <Trajectory> smoothed_trajectory = smooth(trajectory, SMOOTHING_RADIUS);
+	vector <TransformParam> transforms_smooth;
+	for (size_t i = 0; i < transforms.size(); i++)
+	{
+		// Calculate difference in smoothed_trajectory and trajectory
+		double diff_x = smoothed_trajectory[i].x - trajectory[i].x;
+		double diff_y = smoothed_trajectory[i].y - trajectory[i].y;
+		double diff_a = smoothed_trajectory[i].a - trajectory[i].a;
+		// Calculate newer transformation array
+		double dx = transforms[i].dx + diff_x;
+		double dy = transforms[i].dy + diff_y;
+		double da = transforms[i].da + diff_a;
+
+		transforms_smooth.push_back(TransformParam(dx, dy, da));
+	}
+
+	return transforms_smooth;
 }

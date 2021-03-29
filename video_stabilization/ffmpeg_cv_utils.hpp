@@ -11,6 +11,49 @@ typedef struct {
 	AVCodecContext* a_codec_ctx;
 } InputVideoState;
 
+
+struct TransformParam
+{
+	TransformParam() {}
+	TransformParam(double _dx, double _dy, double _da)
+	{
+		dx = _dx;
+		dy = _dy;
+		da = _da;
+	}
+
+	double dx;
+	double dy;
+	double da; // angle
+
+	void getTransform(cv::Mat& T)
+	{
+		// Reconstruct transformation matrix accordingly to new values
+		T.at<double>(0, 0) = cos(da);
+		T.at<double>(0, 1) = -sin(da);
+		T.at<double>(1, 0) = sin(da);
+		T.at<double>(1, 1) = cos(da);
+
+		T.at<double>(0, 2) = dx;
+		T.at<double>(1, 2) = dy;
+	}
+};
+
+
+struct Trajectory
+{
+	Trajectory() {}
+	Trajectory(double _x, double _y, double _a) {
+		x = _x;
+		y = _y;
+		a = _a;
+	}
+
+	double x;
+	double y;
+	double a; // angle
+};
+
 static int open_codec_context(InputVideoState* ivs, enum AVMediaType type);
 
 void openVideo(InputVideoState* ivs, const char* src);
@@ -32,6 +75,21 @@ void encodeAudio(AVFrame *src, SwrContext* swr_ctx, AVCodecContext* a_codec_ctx,
 */
 cv::Mat avframeToCvmat(const AVFrame* frame);
 
+/**
+* Cumulative Sum
+*/
+std::vector<Trajectory> cumsum(std::vector<TransformParam>& transforms);
+
+/**
+* Smooth
+*/
+std::vector<Trajectory> smooth(std::vector <Trajectory>& trajectory, int radius);
+
+/**
+* Video Stabilization with average smoothing
+*/
+
+std::vector<TransformParam>video_stabilization_with_average(cv::VideoCapture cap, int SMOOTHING_RADIUS);
 
 /**
 *	cv::Mat to AVFrame
