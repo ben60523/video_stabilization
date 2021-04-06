@@ -300,8 +300,177 @@ vector <Trajectory> smooth(vector <Trajectory>& trajectory, int radius)
 	return smoothed_trajectory;
 }
 
+Mat getTransformMatrix(Mat curr_gray, vector<Point2f> curr_pts, Mat prev_gray, vector<Point2f> prev_pts)
+{
+	goodFeaturesToTrack(prev_gray, prev_pts, 1500, 0.01, 0.3, Mat(), 7, true, 0.04);
+	if (prev_pts.size() == 0)
+	{
+		return Mat();
+	}
+	TermCriteria criteria = TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.03);
+	//cornerSubPix(prev_gray, prev_pts, Size(5, 5), Size(-1, -1), criteria);
 
-vector <TransformParam>video_stabilization_with_average(VideoCapture cap, int SMOOTHING_RADIUS)
+	// Calculate optical flow (i.e. track feature points)
+	vector <uchar> status;
+	vector <float> err;
+	// TODO: prev_pts null
+	calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, curr_pts, status, err, Size(15, 15), 2, criteria);
+	Mat curr_rgb;
+	cvtColor(curr_gray, curr_rgb, COLOR_GRAY2RGB);
+	Mat mask = Mat::zeros(curr_rgb.size(), curr_rgb.type());
+
+	// Filter only valid points
+	auto prev_it = prev_pts.begin();
+	auto curr_it = curr_pts.begin();
+	for (size_t k = 0; k < status.size(); k++)
+	{
+		if (status[k])
+		{
+			prev_it++;
+			curr_it++;
+			/*line(mask, curr_pts[k], prev_pts[k], (0, 0, 255), 10);
+			circle(curr_rgb, curr_pts[k], 10, (0, 0, 255), -1);
+			Mat img, _img;
+			add(mask, curr_rgb, img);
+			resize(img, _img, Size(curr_rgb.size().width / 2, curr_rgb.size().height / 2));
+			imshow("Optical Flow", _img);
+			waitKey(10);*/
+		}
+		else
+		{
+			prev_it = prev_pts.erase(prev_it);
+			curr_it = curr_pts.erase(curr_it);
+		}
+	}
+	if (prev_pts.size() == 0 || curr_pts.size() == 0)
+	{
+		return Mat();
+	}
+	Mat T = estimateAffine2D(prev_pts, curr_pts);
+	//Mat T = estimateAffinePartial2D(prev_pts, curr_pts);
+	return T;
+}
+
+vector<TransformParam>video_stabilization_with_average(VideoCapture cap, int SMOOTHING_RADIUS)
+{
+	int n_frames = int(cap.get(CAP_PROP_FRAME_COUNT));
+	Mat curr, curr_gray;
+	Mat prev, prev_gray;
+	cap >> prev;
+	// Convert frame to grayscale
+	cvtColor(prev, prev_gray, COLOR_BGR2GRAY);
+	vector <TransformParam> transforms;
+	Mat last_T;
+	double dx = 0;
+	double dy = 0;
+	double da = 0;
+	FILE* fptr;
+	fptr = fopen("output.csv", "w");
+	for (int i = 1; i < n_frames - 1; i++)
+	{
+		// Vector from previous and current feature points
+		vector <Point2f> prev_pts, curr_pts;
+		bool success = cap.read(curr);
+		if (!success) break;
+
+		cvtColor(curr, curr_gray, COLOR_BGR2GRAY);
+
+		Mat T = getTransformMatrix(curr_gray, curr_pts, prev_gray, prev_pts);
+		// In rare cases no transform is found. 
+		// We'll just use the last known good transform.
+		if (T.data == NULL) {
+			last_T.copyTo(T);
+		}
+		else {
+			T.copyTo(last_T);
+			dx = T.at<double>(0, 2);
+			dy = T.at<double>(1, 2);
+		}
+		da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
+		if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
+			if (dx > 0) {
+				dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+			}
+			else {
+				dx = -int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+			}
+		}
+		if (abs(dy) > int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100) {
+			if (dy > 0) {
+				dy = int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+			}
+			else {
+				dy = -int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+			}
+		}
+		double tan10 = tan(3.1415926535 / 18); // tan(10 deg)
+		if (abs(da) > tan10) {
+			if (da > 0) {
+				da = 3.1415926535 / 18;
+			}
+			else {
+				da = -3.1415926535 / 18;
+			}
+		}
+		transforms.push_back(TransformParam(dx, dy, da));
+		curr_gray.copyTo(prev_gray);
+		// Extract traslation and rotation angle
+
+		std::cout << "Frame: " << i << "/" << n_frames << '\r' << flush;
+	}
+	cout << endl;
+	// Compute trajectory using cumulative sum of transformations
+	vector <Trajectory> trajectory = cumsum(transforms);
+	vector <Trajectory> smoothed_trajectory = smooth(trajectory, SMOOTHING_RADIUS);
+	vector <TransformParam> transforms_smooth;
+	fprintf(fptr, "dx_origin,dy_origin,da_origin,dx_smooth,dy_smooth,da_smooth\n");
+	for (size_t i = 0; i < transforms.size(); i++)
+	{
+		//fprintf(fptr, "%d,%f,%f,%f,%f,%f,%f\n", int(i), trajectory[i].x, trajectory[i].y, trajectory[i].a * 180 / M_PI, smoothed_trajectory[i].x, smoothed_trajectory[i].y, smoothed_trajectory[i].a * 180 / M_PI);
+		// Calculate difference in smoothed_trajectory and trajectory
+		double diff_x = smoothed_trajectory[i].x - trajectory[i].x;
+		double diff_y = smoothed_trajectory[i].y - trajectory[i].y;
+		double diff_a = smoothed_trajectory[i].a - trajectory[i].a;
+		// Calculate newer transformation array
+		double dx = transforms[i].dx + diff_x;
+		double dy = transforms[i].dy + diff_y;
+		double da = transforms[i].da + diff_a;
+
+		//if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
+		//	if (dx > 0) {
+		//		dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+		//	}
+		//	else {
+		//		dx = -int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+		//	}
+		//}
+		//if (abs(dy) > int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100) {
+		//	if (dy > 0) {
+		//		dy = int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+		//	}
+		//	else {
+		//		dy = -int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+		//	}
+		//}
+
+		//double tan10 = tan(3.1415926535 / 18); // tan(10 deg)
+		//if (abs(da) > tan10) {
+		//	if (da > 0) {
+		//		da = 3.1415926535 / 18;
+		//	}
+		//	else {
+		//		da = -3.1415926535 / 18;
+		//	}
+		//}
+
+		fprintf(fptr, "%f,%f,%f,%f,%f,%f\n", transforms[i].dx, transforms[i].dy, transforms[i].da * 180 / M_PI, dx, dy, da * 180 / M_PI);
+		transforms_smooth.push_back(TransformParam(dx, dy, da));
+	}
+	fclose(fptr);
+	return transforms_smooth;
+}
+
+vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, double Q1, double R1, double E1, int SMOOTHING_RADIUS)
 {
 	int n_frames = int(cap.get(CAP_PROP_FRAME_COUNT));
 	Mat curr, curr_gray;
@@ -312,83 +481,101 @@ vector <TransformParam>video_stabilization_with_average(VideoCapture cap, int SM
 	vector <TransformParam> transforms;
 	Mat last_T;
 
+	double prev_dx = 0;
+	double prev_dy = 0;
+	double prev_da = 0;
+
+	double dx = 0;
+	double dy = 0;
+	double da = 0;
+
+	double Q1_dx = Q1;
+	double Q1_dy = Q1;
+	double Q1_da = Q1;
+
+	double R1_dx = R1;
+	double R1_dy = R1;
+	double R1_da = R1;
+
+	double Err_dx = E1;
+	double Err_dy = E1;
+	double Err_da = E1;
+
 	for (int i = 0; i <= n_frames; i++)
 	{
 		// Vector from previous and current feature points
 		vector <Point2f> prev_pts, curr_pts;
 		bool success = cap.read(curr);
-		if (!success) break;
+		if (!success) {
+			break;
+		}
 		cvtColor(curr, curr_gray, COLOR_BGR2GRAY);
-		goodFeaturesToTrack(prev_gray, prev_pts, 100, 0.3, 7, Mat(), 7, false, 0.04);
-		if (prev_pts.size() == 0) {
-			transforms.push_back(TransformParam(0, 0, 0));
-			curr_gray.copyTo(prev_gray);
-			continue;
+
+		Mat T = getTransformMatrix(curr_gray, curr_pts, prev_gray, prev_pts);
+		if (T.data == NULL) {
+			last_T.copyTo(T);
+			//transforms.push_back(TransformParam(dx, dy, da));
+			dx = prev_dx;
+			dy = prev_dy;
+			da = prev_da;
 		}
-		TermCriteria criteria = TermCriteria(TermCriteria::EPS + TermCriteria::COUNT, 10, 0.03);
-		cornerSubPix(prev_gray, prev_pts, Size(5, 5), Size(-1, -1), criteria);
+		else {
+			T.copyTo(last_T);
+			dx = T.at<double>(0, 2);
+			dy = T.at<double>(1, 2);
+			da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
+		}
+		cout << "[Origin] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
+		// Kalman Filter
+		double frame_err_dx = Err_dx + Q1_dx;
+		double gain_dx = frame_err_dx / (frame_err_dx + R1_dx);
+		dx = (1 - gain_dx) * prev_dx + gain_dx * dx;
 
-		// Calculate optical flow (i.e. track feature points)
-		vector <uchar> status;
-		vector <float> err;
-		// TODO: prev_pts null
-		calcOpticalFlowPyrLK(prev_gray, curr_gray, prev_pts, curr_pts, status, err, Size(15, 15), 2, criteria);
+		double frame_err_dy = Err_dy + Q1_dy;
+		double gain_dy = frame_err_dy / (frame_err_dy + R1_dy);
+		dy = (1 - gain_dy) * prev_dy + gain_dy * dy;
 
-		// Filter only valid points
-		auto prev_it = prev_pts.begin();
-		auto curr_it = curr_pts.begin();
-		for (size_t k = 0; k < status.size(); k++)
-		{
-			if (status[k])
-			{
-				prev_it++;
-				curr_it++;
+		double frame_err_da = Err_da + Q1_da;
+		double gain_da = frame_err_da / (frame_err_da + R1_da);
+		da = (1 - gain_da) * prev_da + gain_da * da;
+		// Tuning Error
+		Err_dx = (1 - gain_dx) * frame_err_dx;
+		Err_dy = (1 - gain_dy) * frame_err_dy;
+		Err_da = (1 - gain_da) * frame_err_da;
+		if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
+			if (dx > 0) {
+				dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
 			}
-			else
-			{
-				prev_it = prev_pts.erase(prev_it);
-				curr_it = curr_pts.erase(curr_it);
+			else {
+				dx = -int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
 			}
 		}
-
-		// Find transformation matrix
-		if (prev_pts.size() == 0 || curr_pts.size() == 0) {
-			transforms.push_back(TransformParam(0, 0, 0));
-			curr_gray.copyTo(prev_gray);
-			//waitKey(30);
-			continue;
+		if (abs(dy) > int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100) {
+			if (dy > 0) {
+				dy = int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+			}
+			else {
+				dy = -int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+			}
 		}
-		Mat T = estimateAffinePartial2D(prev_pts, curr_pts);
-		// In rare cases no transform is found. 
-		// We'll just use the last known good transform.
-		if (T.data == NULL) last_T.copyTo(T);
-		T.copyTo(last_T);
-		// Extract traslation and rotation angle
-		double dx = T.at<double>(0, 2);
-		double dy = T.at<double>(1, 2);
-		double da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
+		double tan10 = tan(3.1415926535 / 36); // tan(10 deg)
+		if (abs(da) > tan10) {
+			if (da > 0) {
+				da = 3.1415926535 / 36;
+			}
+			else {
+				da = -3.1415926535 / 36;
+			}
+		}
+		prev_dx = dx;
+		prev_dy = dy;
+		prev_da = da;
+		cout << "[After ] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
+
 		transforms.push_back(TransformParam(dx, dy, da));
+
 		curr_gray.copyTo(prev_gray);
 		std::cout << "Frame: " << i << "/" << n_frames << '\r' << flush;
 	}
-	cout << endl;
-	// Compute trajectory using cumulative sum of transformations
-	vector <Trajectory> trajectory = cumsum(transforms);
-	vector <Trajectory> smoothed_trajectory = smooth(trajectory, SMOOTHING_RADIUS);
-	vector <TransformParam> transforms_smooth;
-	for (size_t i = 0; i < transforms.size(); i++)
-	{
-		// Calculate difference in smoothed_trajectory and trajectory
-		double diff_x = smoothed_trajectory[i].x - trajectory[i].x;
-		double diff_y = smoothed_trajectory[i].y - trajectory[i].y;
-		double diff_a = smoothed_trajectory[i].a - trajectory[i].a;
-		// Calculate newer transformation array
-		double dx = transforms[i].dx + diff_x;
-		double dy = transforms[i].dy + diff_y;
-		double da = transforms[i].da + diff_a;
-
-		transforms_smooth.push_back(TransformParam(dx, dy, da));
-	}
-
-	return transforms_smooth;
+	return transforms;
 }

@@ -68,7 +68,7 @@ void encodeCVMatByFFmpeg(cv::Mat image, SwsContext* swsctx, AVCodecContext* v_co
 /**
 * Encode Audio
 */
-void encodeAudio(AVFrame *src, SwrContext* swr_ctx, AVCodecContext* a_codec_ctx, AVFormatContext* outctx, AVFrame* dst, AVStream* astream);
+void encodeAudio(AVFrame* src, SwrContext* swr_ctx, AVCodecContext* a_codec_ctx, AVFormatContext* outctx, AVFrame* dst, AVStream* astream);
 
 /**
 * AVFrame to cv::Mat
@@ -91,6 +91,9 @@ std::vector<Trajectory> smooth(std::vector <Trajectory>& trajectory, int radius)
 
 std::vector<TransformParam>video_stabilization_with_average(cv::VideoCapture cap, int SMOOTHING_RADIUS);
 
+std::vector<TransformParam>video_stabilization_with_kalman_filter(cv::VideoCapture cap, double Q1, double R1, double E1, int SMOOTHING_RADIUS);
+
+cv::Mat getTransformMatrix(cv::Mat curr_gray, std::vector<cv::Point2f> curr_pts, cv::Mat prev_gray, std::vector<cv::Point2f> prev_pts);
 /**
 *	cv::Mat to AVFrame
 */

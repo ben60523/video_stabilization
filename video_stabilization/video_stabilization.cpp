@@ -15,8 +15,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 
 */
-#define PREVIEW 1
-
+#define PREVIEW 0
+#define KALMAN_FILTER 0
 
 #include "stdafx.h"
 #include "ffmpeg_cv_utils.hpp"
@@ -24,8 +24,8 @@ Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 using namespace std;
 using namespace cv;
 
-const int SMOOTHING_RADIUS = 40; // In frames. The larger the more stable the video, but less reactive to sudden panning
-const char* FILENAME = "video_4.mp4";
+const int SMOOTHING_RADIUS = 75; // In frames. The larger the more stable the video, but less reactive to sudden panning
+const char* FILENAME = "video_6.mp4";
 
 void fixBorder(Mat& frame_stabilized)
 {
@@ -49,8 +49,13 @@ int main(int argc, char** argv)
 	InputVideoState* ivs = (InputVideoState*)malloc(sizeof(InputVideoState));
 	AVFrame* input_frame = av_frame_alloc();
 	openVideo(ivs, FILENAME);
-
-	vector <TransformParam> transforms_smooth = video_stabilization_with_average(cap, SMOOTHING_RADIUS);
+	vector <TransformParam> transforms_smooth;
+	if (KALMAN_FILTER == 1) {
+		transforms_smooth = video_stabilization_with_kalman_filter(cap, 0.004, 0.5, 1, SMOOTHING_RADIUS);
+	}
+	else {
+		transforms_smooth = video_stabilization_with_average(cap, SMOOTHING_RADIUS);
+	}
 
 	cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 	Mat T(2, 3, CV_64F);
@@ -151,16 +156,19 @@ int main(int argc, char** argv)
 				frame_mat = avframeToCvmat(input_frame);
 				// Extract transform from translation and rotation angle. 
 				transforms_smooth[nb_v_frame].getTransform(T);
+				double x = T.at<double>(0, 2);
+				double y = T.at<double>(1, 2);
+				double arctan = atan2(T.at<double>(1, 0), T.at<double>(1, 1));
 				// if concat, w / 200
 				// or w /100
-				if (abs(T.at<double>(1, 0)) <= 0.18f && abs(T.at<double>(0, 2)) <= w / 200 && abs(T.at<double>(1, 2)) <= h / 100) {
-					cout <<
-						"cos = " << setprecision(3) << T.at<double>(0, 0) <<
+				if (1) {
+					/*cout <<
+						"-cos = " << setprecision(3) << T.at<double>(0, 0) <<
 						", -sin = " << setprecision(3) << T.at<double>(0, 1) <<
 						", sin = " << setprecision(3) << T.at<double>(1, 0) <<
 						", cos = " << setprecision(3) << T.at<double>(1, 1) <<
 						", dx = " << setprecision(3) << T.at<double>(0, 2) <<
-						", dy = " << setprecision(3) << T.at<double>(1, 2) << endl;
+						", dy = " << setprecision(3) << T.at<double>(1, 2) << endl;*/
 					// Apply affine wrapping to the given frame
 					warpAffine(frame_mat, frame_stabilized, T, frame_mat.size());
 					// Scale image to remove black border artifact
