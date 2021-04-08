@@ -302,6 +302,8 @@ vector <Trajectory> smooth(vector <Trajectory>& trajectory, int radius)
 
 Mat getTransformMatrix(Mat curr_gray, vector<Point2f> curr_pts, Mat prev_gray, vector<Point2f> prev_pts)
 {
+	Mat ScaleT = getRotationMatrix2D(Point2f(curr_gray.cols / 2, curr_gray.rows / 2), 0, 1.1);
+	warpAffine(curr_gray, curr_gray, ScaleT, curr_gray.size());
 	goodFeaturesToTrack(prev_gray, prev_pts, 1500, 0.01, 0.3, Mat(), 7, true, 0.04);
 	if (prev_pts.size() == 0)
 	{
@@ -387,31 +389,31 @@ vector<TransformParam>video_stabilization_with_average(VideoCapture cap, int SMO
 			dy = T.at<double>(1, 2);
 		}
 		da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
-		if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
-			if (dx > 0) {
-				dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
-			}
-			else {
-				dx = -int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
-			}
-		}
-		if (abs(dy) > int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100) {
-			if (dy > 0) {
-				dy = int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
-			}
-			else {
-				dy = -int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
-			}
-		}
-		double tan10 = tan(3.1415926535 / 18); // tan(10 deg)
-		if (abs(da) > tan10) {
-			if (da > 0) {
-				da = 3.1415926535 / 18;
-			}
-			else {
-				da = -3.1415926535 / 18;
-			}
-		}
+		//if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
+		//	if (dx > 0) {
+		//		dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+		//	}
+		//	else {
+		//		dx = -int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
+		//	}
+		//}
+		//if (abs(dy) > int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100) {
+		//	if (dy > 0) {
+		//		dy = int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+		//	}
+		//	else {
+		//		dy = -int(cap.get((CAP_PROP_FRAME_HEIGHT))) / 100;
+		//	}
+		//}
+		//double tan10 = tan(3.1415926535 / 18); // tan(10 deg)
+		//if (abs(da) > tan10) {
+		//	if (da > 0) {
+		//		da = 3.1415926535 / 18;
+		//	}
+		//	else {
+		//		da = -3.1415926535 / 18;
+		//	}
+		//}
 		transforms.push_back(TransformParam(dx, dy, da));
 		curr_gray.copyTo(prev_gray);
 		// Extract traslation and rotation angle
@@ -525,7 +527,7 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 			dy = T.at<double>(1, 2);
 			da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
 		}
-		cout << "[Origin] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
+		//cout << "[Origin] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
 		// Kalman Filter
 		double frame_err_dx = Err_dx + Q1_dx;
 		double gain_dx = frame_err_dx / (frame_err_dx + R1_dx);
@@ -570,7 +572,7 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 		prev_dx = dx;
 		prev_dy = dy;
 		prev_da = da;
-		cout << "[After ] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
+		//cout << "[After ] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
 
 		transforms.push_back(TransformParam(dx, dy, da));
 

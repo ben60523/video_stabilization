@@ -15,7 +15,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 
 */
-#define PREVIEW 0
+#define PREVIEW 1
 #define KALMAN_FILTER 0
 
 #include "stdafx.h"
@@ -25,7 +25,7 @@ using namespace std;
 using namespace cv;
 
 const int SMOOTHING_RADIUS = 75; // In frames. The larger the more stable the video, but less reactive to sudden panning
-const char* FILENAME = "video_6.mp4";
+const char* FILENAME = "video_1.mp4";
 
 void fixBorder(Mat& frame_stabilized)
 {
@@ -159,9 +159,7 @@ int main(int argc, char** argv)
 				double x = T.at<double>(0, 2);
 				double y = T.at<double>(1, 2);
 				double arctan = atan2(T.at<double>(1, 0), T.at<double>(1, 1));
-				// if concat, w / 200
-				// or w /100
-				if (1) {
+				if (abs(arctan) < 0.1 && abs(x) < w / 40 && abs(y) < h / 20) {
 					/*cout <<
 						"-cos = " << setprecision(3) << T.at<double>(0, 0) <<
 						", -sin = " << setprecision(3) << T.at<double>(0, 1) <<
@@ -169,15 +167,26 @@ int main(int argc, char** argv)
 						", cos = " << setprecision(3) << T.at<double>(1, 1) <<
 						", dx = " << setprecision(3) << T.at<double>(0, 2) <<
 						", dy = " << setprecision(3) << T.at<double>(1, 2) << endl;*/
-					// Apply affine wrapping to the given frame
-					warpAffine(frame_mat, frame_stabilized, T, frame_mat.size());
+						// Apply affine wrapping to the given frame
 					// Scale image to remove black border artifact
+					warpAffine(frame_mat, frame_stabilized, T, frame_mat.size());
 
 				}
 				else {
-					//frame_stabilized.copyTo(frame_mat);
-					frame_stabilized = frame_mat.clone();
+					Mat transform_new(2, 3, CV_64F);;
+					TransformParam(w / 120, h / 60, M_PI / 108).getTransform(transform_new);
+					warpAffine(frame_mat, frame_stabilized, transform_new, frame_mat.size());
 				}
+				// if concat, w / 200
+				// or w /100
+				//if (1) {
+				//	
+
+				//}
+				//else {
+				//	//frame_stabilized.copyTo(frame_mat);
+				//	frame_stabilized = frame_mat.clone();
+				//}
 				fixBorder(frame_stabilized);
 				hconcat(frame_mat, frame_stabilized, frame_out); // concat image
 				// Now draw the original and stablised side by side for coolness
