@@ -302,8 +302,8 @@ vector <Trajectory> smooth(vector <Trajectory>& trajectory, int radius)
 
 Mat getTransformMatrix(Mat curr_gray, vector<Point2f> curr_pts, Mat prev_gray, vector<Point2f> prev_pts)
 {
-	Mat ScaleT = getRotationMatrix2D(Point2f(curr_gray.cols / 2, curr_gray.rows / 2), 0, 1.1);
-	warpAffine(curr_gray, curr_gray, ScaleT, curr_gray.size());
+	/*Mat ScaleT = getRotationMatrix2D(Point2f(curr_gray.cols / 2, curr_gray.rows / 2), 0, 1.1);
+	warpAffine(curr_gray, curr_gray, ScaleT, curr_gray.size());*/
 	goodFeaturesToTrack(prev_gray, prev_pts, 1500, 0.01, 0.3, Mat(), 7, true, 0.04);
 	if (prev_pts.size() == 0)
 	{
@@ -428,7 +428,7 @@ vector<TransformParam>video_stabilization_with_average(VideoCapture cap, int SMO
 	fprintf(fptr, "dx_origin,dy_origin,da_origin,dx_smooth,dy_smooth,da_smooth\n");
 	for (size_t i = 0; i < transforms.size(); i++)
 	{
-		//fprintf(fptr, "%d,%f,%f,%f,%f,%f,%f\n", int(i), trajectory[i].x, trajectory[i].y, trajectory[i].a * 180 / M_PI, smoothed_trajectory[i].x, smoothed_trajectory[i].y, smoothed_trajectory[i].a * 180 / M_PI);
+		fprintf(fptr, "%d,%f,%f,%f,%f,%f,%f\n", int(i), trajectory[i].x, trajectory[i].y, trajectory[i].a * 180 / M_PI, smoothed_trajectory[i].x, smoothed_trajectory[i].y, smoothed_trajectory[i].a * 180 / M_PI);
 		// Calculate difference in smoothed_trajectory and trajectory
 		double diff_x = smoothed_trajectory[i].x - trajectory[i].x;
 		double diff_y = smoothed_trajectory[i].y - trajectory[i].y;
@@ -465,7 +465,7 @@ vector<TransformParam>video_stabilization_with_average(VideoCapture cap, int SMO
 		//	}
 		//}
 
-		fprintf(fptr, "%f,%f,%f,%f,%f,%f\n", transforms[i].dx, transforms[i].dy, transforms[i].da * 180 / M_PI, dx, dy, da * 180 / M_PI);
+		//fprintf(fptr, "%f,%f,%f,%f,%f,%f\n", transforms[i].dx, transforms[i].dy, transforms[i].da * 180 / M_PI, dx, dy, da * 180 / M_PI);
 		transforms_smooth.push_back(TransformParam(dx, dy, da));
 	}
 	fclose(fptr);
@@ -482,6 +482,7 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 	cvtColor(prev, prev_gray, COLOR_BGR2GRAY);
 	vector <TransformParam> transforms;
 	Mat last_T;
+	FILE *fptr = fopen("kalman.csv", "w");
 
 	double prev_dx = 0;
 	double prev_dy = 0;
@@ -503,6 +504,7 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 	double Err_dy = E1;
 	double Err_da = E1;
 
+	fprintf(fptr, "dx_origin,dy_origin,da_origin,dx_smooth,dy_smooth,da_smooth\n");
 	for (int i = 0; i <= n_frames; i++)
 	{
 		// Vector from previous and current feature points
@@ -527,6 +529,7 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 			dy = T.at<double>(1, 2);
 			da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
 		}
+		fprintf(fptr, "%f,%f,%f,", dx, dy, da * 180 / M_PI);
 		//cout << "[Origin] dx= " << dx << ", dy= " << dy << ", da= " << da * 180 / M_PI << endl;
 		// Kalman Filter
 		double frame_err_dx = Err_dx + Q1_dx;
@@ -544,6 +547,8 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 		Err_dx = (1 - gain_dx) * frame_err_dx;
 		Err_dy = (1 - gain_dy) * frame_err_dy;
 		Err_da = (1 - gain_da) * frame_err_da;
+
+		fprintf(fptr, "%f,%f,%f\n", dx, dy, da * 180 / M_PI);
 		if (abs(dx) > int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100) {
 			if (dx > 0) {
 				dx = int(cap.get(CAP_PROP_FRAME_WIDTH)) / 100;
@@ -579,5 +584,6 @@ vector<TransformParam>video_stabilization_with_kalman_filter(VideoCapture cap, d
 		curr_gray.copyTo(prev_gray);
 		std::cout << "Frame: " << i << "/" << n_frames << '\r' << flush;
 	}
+	fclose(fptr);
 	return transforms;
 }

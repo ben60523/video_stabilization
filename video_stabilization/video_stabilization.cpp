@@ -16,7 +16,7 @@ Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 
 */
 #define PREVIEW 1
-#define KALMAN_FILTER 0
+#define KALMAN_FILTER 1
 
 #include "stdafx.h"
 #include "ffmpeg_cv_utils.hpp"
@@ -25,7 +25,7 @@ using namespace std;
 using namespace cv;
 
 const int SMOOTHING_RADIUS = 75; // In frames. The larger the more stable the video, but less reactive to sudden panning
-const char* FILENAME = "video_1.mp4";
+const char* FILENAME = "video_6.mp4";
 
 void fixBorder(Mat& frame_stabilized)
 {
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
 				double x = T.at<double>(0, 2);
 				double y = T.at<double>(1, 2);
 				double arctan = atan2(T.at<double>(1, 0), T.at<double>(1, 1));
-				if (abs(arctan) < 0.1 && abs(x) < w / 40 && abs(y) < h / 20) {
+				if (/*abs(arctan) < 0.1 && abs(x) < w / 40 && abs(y) < h / 20*/1) {
 					/*cout <<
 						"-cos = " << setprecision(3) << T.at<double>(0, 0) <<
 						", -sin = " << setprecision(3) << T.at<double>(0, 1) <<
