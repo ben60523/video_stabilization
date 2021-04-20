@@ -7,7 +7,7 @@
 #define UINT64_C(c) (c ## ULL)
 #endif
 
-
+#define _CRT_SECURE_NO_WARNINGS
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <cassert>

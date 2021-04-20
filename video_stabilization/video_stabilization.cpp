@@ -15,7 +15,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 Modified by Satya Mallick, Big Vision LLC (Jan 2019)
 
 */
-#define PREVIEW 1
+#define PREVIEW 0
 #define KALMAN_FILTER 1
 
 #include "stdafx.h"
