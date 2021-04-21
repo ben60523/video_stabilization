@@ -11,3 +11,5 @@ x64
 *.MP4
 *.pdb
 *.csv
+ffmpeg
+opencv2

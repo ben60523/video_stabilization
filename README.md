@@ -8,6 +8,9 @@ __This repository is Microsoft Visual Studio Project and consist of two parts.__
 
 ***The other is to estimate the motion of camera and smooth it, and then genrate the media file which each frame is tranformed by the motion.***
 
+:::info
+___Unzip ffmpeg_opencv_lib_h.7z before compile___
+:::
 
 ## Structure
 ```
