@@ -1,5 +1,7 @@
 # Video Stabilization
 
+https://ben60523.medium.com/the-method-about-decreasing-vibration-in-video-with-two-ways-simple-moving-average-sma-and-7f6f8030bb94
+
 __This repository provides a way to post-process media file to decrease the vibration of the video which is caused by other external factors(e.g. hands).__
 
 __This repository is Microsoft Visual Studio Project and consist of two parts.__ 
